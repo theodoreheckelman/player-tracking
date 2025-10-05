@@ -14,25 +14,32 @@ class Exp(BaseExp):
         super().__init__()
 
         # dataset config
-        self.num_classes = 1
+        self.num_classes = 25
         self.dataset_name = "player_dataset"
 
-        # paths relative to YOLOX root
+        # paths relative to YOLOX root (adjust if your repo layout differs)
+        # Note: we keep json filenames separate — coco loader will find them inside images/<name> if present.
         self.data_dir = os.path.abspath("../YOLOX_dataset")
-        self.train_ann = os.path.join(self.data_dir, "annotations/instances_train.json")
-        self.val_ann = os.path.join(self.data_dir, "annotations/instances_train.json")
-        self.train_img_dir = os.path.join(self.data_dir, "images/train")
-        self.val_img_dir = os.path.join(self.data_dir, "images/val")
+        self.train_ann = "train_annotations.coco.json"  # filename inside images/train_new/
+        self.val_ann = "val_annotations.coco.json"      # filename inside images/val_new/
+        self.train_name = "train_new"
+        self.val_name = "val_new"
+
+        # convenience image paths (not strictly required)
+        self.train_img_dir = os.path.join(self.data_dir, "images", self.train_name)
+        self.val_img_dir = os.path.join(self.data_dir, "images", self.val_name)
 
         # input and training config
         self.input_size = (640, 640)
         self.test_size = (640, 640)
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
-        self.max_epoch = 300
+        self.max_epoch = 115
         self.print_interval = 20
         self.eval_interval = 10
-        self.data_num_workers = 4
+        self.data_num_workers = 2
 
+
+        # optimizer / lr settings
         self.basic_lr_per_img = 0.01 / 64.0
         self.warmup_epochs = 5
         self.warmup_lr = 0
@@ -41,12 +48,19 @@ class Exp(BaseExp):
         self.weight_decay = 5e-4
         self.momentum = 0.9
 
-        self.batch_size = 8
+        # model size + batch
+        self.batch_size = 4           # adjust to your GPU / CPU
+
+        # M version
+        # self.depth = 0.67     
+        # self.width = 0.75  
+
+        # S version
         self.depth = 0.33
         self.width = 0.50
+
         self.ema = True
         self.save_history_ckpt = True
-
 
     def get_model(self):
         def init_yolo(M):
@@ -63,10 +77,11 @@ class Exp(BaseExp):
         return model
 
     def get_dataset(self, cache: bool = False, cache_type: str = "ram"):
+        # Pass json_file as a filename — COCODataset will search inside data_dir/images/train_new/
         return COCODataset(
             data_dir=self.data_dir,
             json_file=self.train_ann,
-            name="train",
+            name=self.train_name,
             img_size=self.input_size,
             preproc=TrainTransform(max_labels=50),
             cache=cache,
@@ -82,7 +97,6 @@ class Exp(BaseExp):
             batch_size=batch_size,
             drop_last=False,
         )
-
 
         from torch.utils.data import DataLoader
         return DataLoader(
@@ -106,10 +120,10 @@ class Exp(BaseExp):
 
     def get_lr_scheduler(self, optimizer, iters_per_epoch: int, **kwargs):
         scheduler = LRScheduler(
-            "yoloxwarmcos",  # scheduler type
-            optimizer,       # <-- pass the optimizer here
-            iters_per_epoch, # iterations per epoch
-            self.max_epoch,  # total epochs
+            "yoloxwarmcos",
+            optimizer,
+            iters_per_epoch,
+            self.max_epoch,
             warmup_epochs=self.warmup_epochs,
             warmup_lr=self.warmup_lr,
             no_aug_epochs=self.no_aug_epochs,
@@ -117,17 +131,17 @@ class Exp(BaseExp):
         )
         return scheduler
 
-
     def get_evaluator(self):
+        # If your val JSON and images are present, this will be used.
         valdataset = COCODataset(
             data_dir=self.data_dir,
             json_file=self.val_ann,
-            name="val",
+            name=self.val_name,
             img_size=self.test_size,
             preproc=ValTransform(),
         )
         from torch.utils.data import DataLoader
-        val_loader = DataLoader(valdataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
+        val_loader = DataLoader(valdataset, batch_size=self.batch_size, shuffle=False, num_workers=2)
         return COCOEvaluator(
             dataloader=val_loader,
             img_size=self.test_size,
@@ -137,6 +151,8 @@ class Exp(BaseExp):
         )
 
     def eval(self, model, evaluator, weights):
+        if evaluator is None:
+            return None
         return evaluator.evaluate(model, weights)
 
     def get_trainer(self, args):

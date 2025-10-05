@@ -37,9 +37,10 @@ cd YOLOX
 pip install -U pip
 pip install -v -e .  # installs YOLOX in editable mode
 pip install -r requirements.txt
-python3 tools/train.py -f yolox/exp/my_player_dataset.py -d 1 -b 8 -o
+cp ../../etc/my_player_dataset.py yolox/exp/ 
+python3 tools/train.py -f yolox/exp/my_player_dataset.py -d 1 -b 8 -os
 ``` 
-I set up the training to be used only for CPU. This was custom by me and can be assumed to be a forked version of YOLOX. If you want the default GPU option than just reclone YOLOX on their main branch. There might need to be file paths changed in your custom dataset. I have added a copy of my data set in /etc. This goes in 
+I set up the training to be used only for CPU. This was custom by me and if there is a YOLOX source code in here, it can be assumed to be a forked version of YOLOX. If you want the default GPU option than just reclone YOLOX on their main branch. There might need to be file paths changed in your custom dataset. I have added a copy of my data set in /etc. This goes in 
 ```bash
 ./train/YOLOX/yolox/exp/
 ```
