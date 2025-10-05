@@ -1,0 +1,24 @@
+[project]
+name = "player-mapping"
+version = "0.1.0"
+description = "Player mapping: detection, tracking, OCR, homography, UV projection"
+authors = [{ name = "Your Name" }]
+requires-python = "==3.12.*"
+
+dependencies = [
+    "torch>=2.2,<2.4",
+    "torchvision>=0.17,<0.18",
+    "opencv-python>=4.10.0",
+    "ultralytics>=8.3.0,<8.4.0",
+    "lap",                # for BYTETrack
+    "cython_bbox",        # for BYTETrack
+    "easyocr>=1.7.2",
+    "numpy>=1.24",
+    "pandas>=2.2",
+    "matplotlib>=3.9",
+    "norfair>=2.3.0",
+    "scikit-learn",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["player_mapping/src"]
