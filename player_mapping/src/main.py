@@ -23,8 +23,12 @@ args = parser.parse_args()
 # --------------------------
 # Initialize models
 # --------------------------
-detector = PlayerDetector()
-tracker = ByteTrackWrapper(track_thresh=0.5, match_thresh=0.8, buffer_size=30, frame_rate=30)
+detector = PlayerDetector(
+    exp_file="train/YOLOX/yolox/exp/my_player_dataset.py",
+    weights_path="train/YOLOX/YOLOX_outputs/my_player_dataset/best_ckpt.pth",
+    conf_thresh=0.2,  # lower for testing
+)
+tracker = ByteTrackWrapper(track_thresh=0.2, match_thresh=0.8, buffer_size=30, frame_rate=30)
 ocr = JerseyRecognizer(gpu=False)  # set gpu=True if available
 
 # --------------------------
@@ -63,7 +67,33 @@ if not cap.isOpened():
 field_vis = FieldVisualizer(scale=10)  # 10 pixels per yard
 
 # --------------------------
-# Tracking loop (collect data first)
+# Drawing helper
+# --------------------------
+def draw_detections(frame, dets, color_map=None):
+    h, w = frame.shape[:2]
+    if color_map is None:
+        color_map = {}
+    for det in dets:
+        x1, y1, x2, y2 = det["xyxy"]
+        x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w-1, x2), min(h-1, y2)
+        cls = det.get("cls", -1)
+        track_id = det.get("track_id", -1)
+        color = color_map.get(cls, (0, 255, 255))
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        label = f"ID {track_id}"
+        if cls >= 0:
+            label += f" cls{cls}"
+        cv2.putText(frame, label, (x1, max(y1-5,0)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+# class color mapping
+color_map = {
+    detector.player_class_idx: (0, 255, 0),
+    detector.football_class_idx: (0, 0, 255),
+}
+
+# --------------------------
+# Tracking loop
 # --------------------------
 records = []
 all_field_coords = []
@@ -76,17 +106,22 @@ while True:
     frame_idx += 1
 
     # --- Detection ---
-    dets = detector.detect(frame)  # [{'xyxy': [...], 'score': ...}]
+    dets = detector.detect(frame)  # raw detections
+    print(dets)
+    if not dets:
+        continue
 
     # --- Tracking ---
-    tracks = tracker.update(dets, frame.shape[:2])  # returns list of dicts
+    tracks = tracker.update(dets, frame)  # track_id + xyxy
 
-    # --- Collect field coordinates for this frame ---
+    # --- Combine tracks with cls for drawing and recording ---
+    draw_list = []
     player_coords = []
 
-    for t in tracks:
+    for i, t in enumerate(tracks):
         tid = t["track_id"]
         x1, y1, x2, y2 = ensure_int_box(t["xyxy"], frame.shape)
+        cls = dets[i]["cls"] if i < len(dets) else -1
 
         # Crop lower torso for jersey OCR
         crop = crop_lower_torso((x1, y1, x2, y2), frame)
@@ -103,6 +138,12 @@ while True:
         else:
             field_x, field_y = None, None
 
+        draw_list.append({
+            "xyxy": [x1, y1, x2, y2],
+            "cls": cls,
+            "track_id": tid
+        })
+
         player_coords.append((field_x, field_y))
 
         # Record info
@@ -113,26 +154,16 @@ while True:
             "x1": x1, "y1": y1, "x2": x2, "y2": y2,
             "cx": cx, "cy": cy,
             "field_x": field_x,
-            "field_y": field_y
+            "field_y": field_y,
+            "cls": cls
         })
 
     all_field_coords.append(player_coords)
 
-    # Optional: display bounding boxes while processing
+    # --- Draw detections
     if not args.skip_visual:
-        vis_frame = frame.copy()
-        for t in tracks:
-            tid = t["track_id"]
-            x1, y1, x2, y2 = ensure_int_box(t["xyxy"], frame.shape)
-            cv2.rectangle(vis_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"ID {tid}"
-            crop = crop_lower_torso((x1, y1, x2, y2), frame)
-            jersey = ocr.read_number(crop) if crop is not None else None
-            if jersey is not None:
-                label += f" #{jersey}"
-            cv2.putText(vis_frame, label, (x1, y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-        cv2.imshow("Detection (Optional)", cv2.resize(vis_frame, (640, 360)))
+        draw_detections(frame, draw_list, color_map=color_map)
+        cv2.imshow("Detection", cv2.resize(frame, (640, 360)))
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
@@ -150,7 +181,7 @@ if not args.skip_visual:
             vis_img = field_vis.draw_players(player_coords)
 
         cv2.imshow("Top-Down Field View", cv2.resize(vis_img, (640, 360)))
-        if cv2.waitKey(50) & 0xFF == ord('q'):  # 50ms per frame
+        if cv2.waitKey(50) & 0xFF == ord('q'):
             break
 
     print("Press any key to close the field view window...")

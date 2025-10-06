@@ -15,6 +15,11 @@ I have included a sample game clip. If you want to use a different game clip, ju
 uv init player-mapping
 # replace pyproject.toml with this project's pyproject.toml
 uv sync
+source .venv/bin/activate
+curl -sS https://bootstrap.pypa.io/get-pip.py | python
+cd train/YOLOX
+pip install -e .
+python -m pip install -r train/YOLOX/requirements.txt
 ```
 If you want to only make a homography
 ```bash

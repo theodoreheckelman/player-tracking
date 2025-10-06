@@ -3,7 +3,7 @@ name = "player-mapping"
 version = "0.1.0"
 description = "Player mapping: detection, tracking, OCR, homography, UV projection"
 authors = [{ name = "Your Name" }]
-requires-python = "==3.12.*"
+requires-python = "==3.10.*"
 
 dependencies = [
     "torch>=2.2,<2.4",
